@@ -2314,6 +2314,12 @@ class UnityResolve final {
                 if (method)
                     return method->Invoke<void>(original);
             }
+
+	    static auto DontDestroyOnLoad(UnityObject* target) -> void {
+		if (!target) return;
+		static Method* method;
+		if (!method) method = Get("UnityEngine.CoreModule.dll")->Get("Object")->Get<Method>("DontDestroyOnLoad", { "*" });
+		if (method) return method->Invoke<void>(target);	    }
         };
 
         struct Component : public UnityObject {
@@ -2844,14 +2850,15 @@ class UnityResolve final {
         };
 
         struct GameObject : UnityObject {
-            static auto Create(GameObject *obj, const std::string &name) -> void {
-                if (!obj)
-                    return;
-                static Method *method;
-                if (!method)
-                    method = Get("UnityEngine.CoreModule.dll")->Get("GameObject")->Get<Method>("Internal_CreateGameObject");
-                if (method)
-                    method->Invoke<void, GameObject *, String *>(obj, String::New(name));
+            static auto Create(const std::string& name) -> GameObject* {
+                auto klass = Get("UnityEngine.CoreModule.dll")->Get("GameObject");
+                if (!klass) return nullptr;
+                auto obj = klass->New<GameObject>();
+                if (!obj) return nullptr;
+                static Method* method;
+                if (!method) method = klass->Get<Method>("Internal_CreateGameObject");
+                if (method) method->Invoke<void, GameObject*, String*>(obj, String::New(name));
+                return obj ? obj : nullptr;
             }
 
             static auto FindGameObjectsWithTag(const std::string &name) -> std::vector<GameObject *> {
