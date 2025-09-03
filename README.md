@@ -135,13 +135,13 @@
 
 #### 获取函数地址(变量偏移) 及调用(修改/获取) (Get the function address (variable offset) and invoke (modify/get))
 > ``` c++
-> const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
-> const auto pClass   = assembly->Get("className | 类名称");
->                    // assembly->Get("className | 类名称", "*");
->                    // assembly->Get("className | 类名称", "namespace | 空间命名");
+> const auto assembly = UnityResolve::get("assembly.dll | 程序集名称.dll");
+> const auto pClass   = assembly->get("className | 类名称");
+>                    // assembly->get("className | 类名称", "*");
+>                    // assembly->get("className | 类名称", "namespace | 空间命名");
 > 
-> const auto field       = pClass->Get<UnityResolve::Field>("Field Name | 变量名");
-> const auto fieldOffset = pClass->Get<std::int32_t>("Field Name | 变量名");
+> const auto field       = pClass->get<UnityResolve::Field>("Field Name | 变量名");
+> const auto fieldOffset = pClass->get<std::int32_t>("Field Name | 变量名");
 > const int  time        = pClass->GetValue<int>(obj Instance | 对象地址, "time");
 >                       // pClass->GetValue(obj Instance*, name);
 >                        = pClass->SetValue<int>(obj Instance | 对象地址, "time", 114514);
