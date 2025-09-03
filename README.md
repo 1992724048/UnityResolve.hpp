@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> 新版代码正在重构中  \
+> **The codebase is currently under refactoring.**
+
 > 示例代码 (Example code)
 > - [Phasmophobia Cheat (il2cpp, old)](https://github.com/issuimo/PhasmophobiaCheat/tree/main)  
 > - [SausageMan Cheat (il2cpp)](https://github.com/1992724048/SausageManCheat/tree/master/GPP32)
