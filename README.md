@@ -1,14 +1,18 @@
-> [!NOTE]\
-> 有新的功能建议或者Bug可以提交Issues (当然你也可以尝试自己修改代码后提交到该仓库\
-> New feature suggestions or bugs can be commit as issues. Of course, you can also try modifying the code yourself and then commit it to the repository.
-> > Dome
-> > - [Phasmophobia Cheat](https://github.com/issuimo/PhasmophobiaCheat/tree/main)
-> > - [Sausage Man](https://github.com/issuimo/SausageManCheat)
+> 示例代码 (Example code)
+> - [Phasmophobia Cheat (il2cpp, old)](https://github.com/issuimo/PhasmophobiaCheat/tree/main)  
+> - [SausageMan Cheat (il2cpp)](https://github.com/1992724048/SausageManCheat/tree/master/GPP32)
 
-> 如果编译器支持请打开SEH选项 \
-> If your compiler supports it, please enable SEH option. \
-> 对于高版本安卓程序崩溃的可能问题请参阅 [link](https://github.com/issuimo/UnityResolve.hpp/issues/11) \
-> For potential issues related to crashes in higher version Android programs, please refer to the link [link](https://github.com/issuimo/UnityResolve.hpp/issues/11)
+> [!NOTE]\
+> 有任何新功能建议或 Bug，欢迎直接提交 Issue；当然也欢迎你动手修改代码后向本仓库发起 Pull Request。  
+> New feature requests or bug reports are welcome via Issues, and Pull Requests are just as appreciated if you’d like to contribute code directly.
+
+> [!WARNING]\
+> 如果编译器支持，请务必开启 SEH（结构化异常处理）。  
+> If your compiler supports it, please enable SEH (Structured Exception Handling).
+
+> [!TIP]\
+> 高版本 Android 上可能出现的崩溃问题，请参考 [此 Issue](https://github.com/issuimo/UnityResolve.hpp/issues/11)。  
+> For potential crash issues on newer Android versions, see [this issue](https://github.com/issuimo/UnityResolve.hpp/issues/11).
 <hr>
 <h3 align="center">简要概述 (Brief overview)</h3>
 <hr>
@@ -20,7 +24,8 @@
 > - [X] Linux
 > - [X] IOS
 > - [X] HarmonyOS
-> ### 类型 (Type)
+
+> ### 类型 (Types)
 > - [X] Camera
 > - [X] Transform
 > - [X] Component
@@ -56,7 +61,8 @@
 > - [X] Time
 > - [X] FieldInfo
 > - More...
-> ### 功能 (Function)
+
+> ### 功能 (Functions)
 > - [X] Mono注入 (Mono Inject)
 > - [X] DumpToFile
 > - [X] 附加线程 (Thread Attach / Detach)
@@ -75,33 +81,36 @@
 <hr>
 
 #### 使用GLM (use glm)
-[GLM](https://github.com/g-truc/glm)
+> [!CAUTION]
+> 新版本强制性要求 \
+> Mandatory requirements for new versions
+
+[GLM Library](https://github.com/g-truc/glm)
 > ``` C++
-> #define USE_GLM
+> #define USE_GLM // 新版本不需要添加 (New versions do not need to be added)
 > #include "UnityResolve.hpp"
 > ```
 
 #### 更改平台 (Change platform)
 > ``` c++
-> #define WINDOWS_MODE 1 // 如果需要请改为 1 | 1 if you need
+> #define WINDOWS_MODE 1 // 如果需要请改为 1 (1 if you need)
 > #define ANDROID_MODE 0
 > #define LINUX_MODE 0
 > ```
 
 #### 初始化 (Initialization)
 > ``` c++
+> // Windows
 > UnityResolve::Init(GetModuleHandle(L"GameAssembly.dll | mono.dll"), UnityResolve::Mode::Mono);
-> // Linux or Android
+> // Linux、Android、IOS、HarmonyOS
 > UnityResolve::Init(dlopen(L"GameAssembly.so | mono.so", RTLD_NOW), UnityResolve::Mode::Mono);
 > ```
-> 参数1: dll句柄 \
-> Parameter 1: DLL handle \
-> 参数2: 使用模式 \
-> Parameter 2: Usage mode
-> - Mode::Il2cpp
-> - Mode::Mono
 
 #### 附加线程 (Thread Attach / Detach)
+> [!TIP]
+> 如果你是在游戏主线程使用或者通过Hook Update/LateUpdate 那么并不需要该功能 \
+> If you are using it on the main thread of the game or via Hook Update/LateUpdate, you don't need this feature
+
 > ``` c++
 > // C# GC Attach
 > UnityResolve::ThreadAttach();
@@ -111,6 +120,10 @@
 > ```
 
 #### Mono注入 (Mono Inject)
+> [!TIP]
+> 仅 Mono 模式可用 \
+> Only Mono mode is available
+
 > ``` c++
 > UnityResolve::AssemblyLoad assembly("./MonoCsharp.dll");
 > UnityResolve::AssemblyLoad assembly("./MonoCsharp.dll", "MonoCsharp", "Inject", "MonoCsharp.Inject:Load()");
@@ -190,6 +203,10 @@
 > ```
 
 #### 获取对象 (Obtaining an instance)
+> [!TIP]
+> 仅 Unity 对象 \
+> Unity objects only
+
 > ``` c++
 > const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
 > const auto pClass   = assembly->Get("className | 类名称");
