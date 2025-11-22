@@ -364,9 +364,9 @@ class UnityResolve final {
         template <typename T>
         T Unbox(void *obj) {
             if (mode_ == Mode::Il2Cpp) {
-                return static_cast<T>(Invoke<void *>("mono_object_unbox", obj));
-            } else {
                 return static_cast<T>(Invoke<void *>("il2cpp_object_unbox", obj));
+            } else {
+                return static_cast<T>(Invoke<void *>("mono_object_unbox", obj));
             }
         }
     };
@@ -3391,3 +3391,4 @@ class UnityResolve final {
     inline static void *pDomain{};
 };
 #endif // UNITYRESOLVE_HPPs
+
