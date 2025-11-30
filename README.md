@@ -84,6 +84,45 @@
 <h3 align="center">功能使用 (How to use)</h3>
 <hr>
 
+**GOM 支持 (GameObject Manager Support)**
+
+> **说明**
+>
+> 新增 `UnityResolve.GOM.hpp`（仅在 `WINDOWS_MODE` 下包含），用于通过 UnityPlayer 中的全局指针解析并枚举原生的 GameObject / Component 列表（基于原生内存读取）。此模块在某些场景下能补充托管 API 的不足，例如需要直接从原生层索引对象或在 IL2CPP 环境下结合托管对象做匹配。
+
+- **平台**: 仅 Windows（`WINDOWS_MODE`）。
+- **要求**: 编译器需开启 SEH（结构化异常处理），否则读取内存时可能导致异常。
+- **主要 API 与类型**:
+	- `UnityResolveGOM::FindGameObjectManager()` - 查找 GOM 全局指针并返回地址信息
+	- `UnityResolveGOM::EnumerateGameObjects()` - 枚举返回 `std::vector<GameObjectInfo>`，包含 `nativeObject` 与 `managedObject`
+	- `UnityResolveGOM::EnumerateComponents()` - 枚举返回 `std::vector<ComponentInfo>`，包含 `nativeComponent` 与 `managedComponent`
+	- `UnityResolveGOM::EnumerateComponentsByGetComponents()` - 通过托管 API 获取 GameObject 并匹配 GOM 的原生指针
+
+**示例用法**
+```c++
+#include "UnityResolve.hpp"
+#if WINDOWS_MODE
+#include "UnityResolve.GOM.hpp"
+#endif
+
+// 初始化 UnityResolve（示例）
+UnityResolve::Init(GetModuleHandle(L"GameAssembly.dll | mono.dll"), UnityResolve::Mode::Mono);
+UnityResolve::ThreadAttach();
+
+auto gos = UnityResolveGOM::EnumerateGameObjects();
+for (const auto &g : gos) {
+		// g.nativeObject 是原生指针，g.managedObject 是托管的 GameObject*
+}
+
+auto comps = UnityResolveGOM::EnumerateComponents();
+for (const auto &c : comps) {
+		// c.nativeComponent / c.managedComponent
+}
+```
+
+**注意**: 该模块通过在 UnityPlayer 模块中查找全局指针并直接读取内存实现，对不同 Unity 版本或自定义引擎导出可能存在兼容性差异，如发生异常或数据不一致，请提交 Issue 并提供 Unity 版本与相关模块信息。
+
+
 #### 使用GLM (use glm)
 > [!CAUTION]
 > 新版本强制性要求 \
