@@ -1531,6 +1531,23 @@ class UnityResolve final {
             }
         };
 
+        struct Il2CppClassInternal {
+            void *reserved0;
+            void *reserved1;
+            const char *name;
+            const char *namespaze;
+        };
+
+        struct MonoClassInternal {
+            char padding[0x48];
+            const char *name;
+            const char *namespaze;
+        };
+
+        struct MonoVTableInternal {
+            MonoClassInternal *klass;
+        };
+
         enum class BindingFlags : uint32_t {
             Default = 0,
             IgnoreCase = 1,
@@ -3389,6 +3406,10 @@ class UnityResolve final {
     inline static void *hmodule_;
     inline static std::unordered_map<std::string, void *> address_{};
     inline static void *pDomain{};
-};
-#endif // UNITYRESOLVE_HPPs
+  };
 
+#if WINDOWS_MODE
+#include "UnityResolve.GOM.hpp"
+#endif
+
+#endif // UNITYRESOLVE_HPP
