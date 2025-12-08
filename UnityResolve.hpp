@@ -1548,6 +1548,90 @@ class UnityResolve final {
             MonoClassInternal *klass;
         };
 
+        struct Il2CppGameObjectNode {
+            Il2CppGameObjectNode *pLast;
+            Il2CppGameObjectNode *pNext;
+            void *nativeObject;
+        };
+
+        struct Il2CppGameObjectManager {
+            char pad_0000[0x28];
+            Il2CppGameObjectNode *firstNode;
+        };
+
+        struct Il2CppNativeGameObject {
+            char pad_0000[0x28];
+            void *managedObject;
+            void *componentPool;
+            int componentCount;
+            char pad_003C[0x4];
+        };
+
+        struct Il2CppComponentPool {
+            char pad_0000[0x8];
+            void *firstComponent;
+        };
+
+        struct Il2CppNativeComponent {
+            char pad_0000[0x28];
+            void *managedComponent;
+        };
+
+        struct Il2CppManagedObjectHeader {
+            void *klass;
+            void *monitor;
+        };
+
+        struct Il2CppManagedGameObject : Il2CppManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct Il2CppManagedComponent : Il2CppManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct MonoGameObjectNode {
+            MonoGameObjectNode *pLast;
+            MonoGameObjectNode *pNext;
+            void *nativeObject;
+        };
+
+        struct MonoGameObjectManager {
+            char pad_0000[0x28];
+            MonoGameObjectNode *firstNode;
+        };
+
+        struct MonoNativeGameObject {
+            char pad_0000[0x28];
+            void *managedObject;
+            void *componentPool;
+            int componentCount;
+            char pad_003C[0x4];
+        };
+
+        struct MonoComponentPool {
+            char pad_0000[0x8];
+            void *firstComponent;
+        };
+
+        struct MonoNativeComponent {
+            char pad_0000[0x28];
+            void *managedComponent;
+        };
+
+        struct MonoManagedObjectHeader {
+            MonoVTableInternal *vtable;
+            void *monitor;
+        };
+
+        struct MonoManagedGameObject : MonoManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct MonoManagedComponent : MonoManagedObjectHeader {
+            void *nativeObject;
+        };
+
         enum class BindingFlags : uint32_t {
             Default = 0,
             IgnoreCase = 1,
