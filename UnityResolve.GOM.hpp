@@ -377,7 +377,7 @@ inline std::vector<ComponentInfo> EnumerateComponents() {
             continue;
         }
 
-        auto componentCount = SafeReadInt32(nativeGo + 0x38);
+        auto componentCount = SafeReadInt32(nativeGo + 0x40);
         if (componentCount <= 0 || componentCount > kMaxComponentsPerObject) {
             continue;
         }

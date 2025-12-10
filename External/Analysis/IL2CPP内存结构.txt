@@ -1,0 +1,57 @@
+// IL2CPP 运行时 64 位内存布局（GameObjectManager 与 GameObject 相关结构）
+// 所有偏移均为字节偏移，从结构体起始地址算起
+
+// UnityPlayer.dll + GameObjectManagerOffset -> GameObjectManager
+struct Il2CppGameObjectNode {
+    Il2CppGameObjectNode* pLast;        // 0x00  前一个节点
+    Il2CppGameObjectNode* pNext;        // 0x08  后一个节点
+    void*                 nativeObject; // 0x10  原生 GameObject 指针 -> Il2CppNativeGameObject*
+};
+
+struct Il2CppGameObjectManager {
+    char                  pad_0000[0x28]; // 0x00  保留
+    Il2CppGameObjectNode* firstNode;      // 0x28  链表头节点
+};
+
+struct Il2CppNativeGameObject {
+    char   pad_0000[0x28];      // 0x00  保留
+    void*  managedObject;       // 0x28  托管对象指针 -> Il2CppManagedGameObject*
+    void*  componentPool;       // 0x30  组件池指针 -> Il2CppComponentPool*
+    char   pad_0038[0x8];       // 0x38  保留
+    int    componentCount;      // 0x40  组件数量
+    char   pad_0044[0x1C];      // 0x44  保留
+    void*  objectName;          // 0x60  名称字符串指针
+};
+
+struct Il2CppComponentPool {
+    char   pad_0000[0x8];       // 0x00  保留
+    void*  firstComponent;      // 0x08  第一个组件指针 -> Il2CppNativeComponent*
+    // 后续组件地址：0x18, 0x28, ... 步长 0x10
+};
+
+struct Il2CppNativeComponent {
+    char   pad_0000[0x28];      // 0x00  保留
+    void*  managedComponent;    // 0x28  托管组件指针 -> Il2CppManagedComponent*
+};
+
+// IL2CPP 托管对象头部（Il2CppObject）
+struct Il2CppManagedObjectHeader {
+    void* klass;    // 0x00  类元数据指针 -> Il2CppClassInternal*
+    void* monitor;  // 0x08  同步锁
+};
+
+struct Il2CppManagedGameObject : Il2CppManagedObjectHeader {
+    void* nativeObject; // 0x10  原生对象指针 -> Il2CppNativeGameObject*
+};
+
+struct Il2CppManagedComponent : Il2CppManagedObjectHeader {
+    void* nativeObject; // 0x10  原生组件指针 -> Il2CppNativeComponent*
+};
+
+// IL2CPP 类元数据布局（用于获取类型信息）
+struct Il2CppClassInternal {
+    void*       reserved0;  // 0x00  保留
+    void*       reserved1;  // 0x08  保留
+    const char* name;       // 0x10  类名
+    const char* namespaze;  // 0x18  命名空间
+};

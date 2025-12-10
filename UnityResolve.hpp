@@ -1563,8 +1563,10 @@ class UnityResolve final {
             char pad_0000[0x28];
             void *managedObject;
             void *componentPool;
+            char pad_0038[0x8];
             int componentCount;
-            char pad_003C[0x4];
+            char pad_0044[0x1C];
+            void *objectName;
         };
 
         struct Il2CppComponentPool {
@@ -1605,8 +1607,10 @@ class UnityResolve final {
             char pad_0000[0x28];
             void *managedObject;
             void *componentPool;
+            char pad_0038[0x8];
             int componentCount;
-            char pad_003C[0x4];
+            char pad_0044[0x1C];
+            void *objectName;
         };
 
         struct MonoComponentPool {

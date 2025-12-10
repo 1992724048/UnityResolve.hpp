@@ -1,0 +1,100 @@
+Unity Transform 世界坐标外部读取说明
+====================================
+
+一、前提
+--------
+- 已经拿到 **Transform 的原生指针**（记为 `T`）。
+- 按 Mono 结构：`T` 是 `MonoNativeComponent*`，其 `+0x28` 指回 managed Transform，但这里不需要用到 managed，只用原生 Transform 本体。
+- 所有内存读取都通过 `ReadProcessMemory`（本工程里由 `UnityExternal::GetTransformWorldPosition` 封装）。
+
+二、核心思路
+------------
+Unity 内部并不是直接在 Transform 里存一个世界坐标，而是：
+- 把所有 Transform 节点的数据塞到一个连续的数组里（`nodeData`）。
+- 再用一个「父索引数组」`parentIndices` 表示层级结构。
+- `Transform::GetPosition` 做的事情就是：
+  1. 找到本节点在数组里的下标 `index`。
+  2. 从 `nodeData[index]` 取到本地坐标/旋转/缩放，作为起点。
+  3. 然后沿着 `parentIndices[index]` 一路往父节点走，每一层用四元数+缩放+平移把向量累积到世界坐标系。
+
+`UnityExternalTransform.hpp` 里的实现就是**按 IDA 里 `Transform::GetPosition` 的反编译结果 1:1 翻译过来的**，只是把 Unity 的 `ReadMemory` 换成了跨进程的 `ReadProcessMemory`。
+
+三、指针链与关键偏移
+--------------------
+以下偏移都是**针对 Transform 原生指针 `T`**：
+
+1. 读取层级状态指针 `statePtr`
+   - 地址：`T + 0x38`
+   - 类型：`void* statePtr`（内部结构类似 `TransformHierarchyState*`）。
+   - 如果读出来是 0，说明这个 Transform 没有有效的层级数据，直接失败。
+
+2. 从 `statePtr` 里取出两个数组指针：
+   - `nodeData = *(statePtr + 0x18)`
+     - 一个连续数组，每个 Transform 节点占 48 字节（12 个 float）。
+     - 可以理解为 `float nodeData[][12]`。
+   - `parentIndices = *(statePtr + 0x20)`
+     - 一个 `int32_t` 数组，保存每个节点的父索引。
+     - `parentIndices[i]` 表示第 `i` 个节点的父节点索引，`-1` 表示根（无父）。
+
+3. 读取当前 Transform 在数组里的下标 `index`
+   - 地址：`T + 0x40`
+   - 类型：`int32_t index`。
+   - 如果 `index < 0`，说明无效，直接失败。
+
+四、nodeData 每个节点的布局
+----------------------------
+每个节点占 48 字节，即 12 个 float，布局如下（按 IDA 和实际代码）：
+
+- `float t[4]  = node[0..3]`   → 平移向量（XYZ，带填充）
+- `float q[4]  = node[4..7]`   → 四元数（旋转）
+- `float m[4]  = node[8..11]`  → 某种缩放/矩阵系数（在算法里与当前向量做乘法）
+
+也就是说：
+
+- 当前节点在数组里的起始地址：
+  - `selfAddr = nodeData + index * 48` （因为每个节点 48 字节）
+- 当前节点的平移/旋转/缩放：
+  - `t = *(float4*)(selfAddr + 0x00)`
+  - `q = *(float4*)(selfAddr + 0x10)`
+  - `m = *(float4*)(selfAddr + 0x20)`
+
+五、世界坐标计算流程（概念版）
+------------------------------
+1. 初始累积向量：
+   - 读取当前节点：`self = nodeData[index]`。
+   - 把 `self` 的平移向量 `t` 作为起点：
+     - `acc = t`。
+
+2. 找到第一个父节点索引：
+   - `parent = parentIndices[index]`。
+
+3. 循环沿父链向上：
+   - 条件：`while (parent >= 0)`：
+     1. 读取父节点数据：
+        - `node = nodeData[parent]`（同样 12 个 float）。
+        - `t_parent = node[0..3]`，`q_parent = node[4..7]`，`m_parent = node[8..11]`。
+     2. 用父节点的 `q_parent` 和 `m_parent` 对当前 `acc` 做一次旋转/缩放，然后加上 `t_parent`：
+        - 这一块在 IDA 里是一大坨 SSE `_mm_mul_ps/_mm_add_ps/_mm_shuffle_epi32`，
+          在 `UnityExternalTransform.hpp::ComputeWorldPositionFromHierarchy` 里完全照抄。
+        - 概念上就是：`acc = RotateScale(q_parent, m_parent, acc) + t_parent`。
+     3. 读取下一个父索引：
+        - `parent = parentIndices[parent]`。
+
+4. 直到 `parent < 0`（到根节点为止），循环结束。
+
+5. 此时 `acc` 就是最终的世界坐标向量：
+   - `x = acc.x`
+   - `y = acc.y`
+   - `z = acc.z`
+
+六、总结
+--------
+只要拿到 Transform 原生指针 `T`，就能按以下固定链条取世界坐标：
+   - `statePtr = *(T + 0x38)`
+   - `nodeData = *(statePtr + 0x18)`
+   - `parentIndices = *(statePtr + 0x20)`
+   - `index = *(int32*)(T + 0x40)`
+   - `acc = nodeData[index].t`
+   - `for (parent = parentIndices[index]; parent >= 0; parent = parentIndices[parent])`：
+     - `acc = ApplyParentTransform(nodeData[parent], acc)`
+   - 返回 `acc.xyz` 作为世界坐标。
