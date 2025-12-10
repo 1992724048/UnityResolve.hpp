@@ -38,6 +38,26 @@ Unity 游戏逆向工具库，支持 **内注入** 和 **跨进程外挂** 两�
 
 独立于内注入的**纯外部内存读取模块**，适用于跨进程外挂开发。
 
+### 依赖
+
+需要手动添加 [GLM 库](https://github.com/g-truc/glm)：
+
+```bash
+# 克隆 GLM 到项目根目录
+git clone https://github.com/g-truc/glm.git
+# 或下载 Release 解压到项目根目录
+```
+
+确保目录结构为：
+```
+项目根目录/
+├── glm/
+│   ├── glm.hpp
+│   └── ...
+└── External/
+    └── ...
+```
+
 ### 目录结构
 
 ```
