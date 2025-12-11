@@ -51,18 +51,4 @@ struct ManagedObject {
     }
 };
 
-// Helper: Convert managed address to native
-inline bool Managed_GetNative(std::uintptr_t managedAddress, std::uintptr_t& outNative) {
-    outNative = 0;
-    if (!managedAddress) return false;
-    return ReadPtrGlobal(managedAddress + 0x10u, outNative) && outNative != 0;
-}
-
-// Helper: Convert native address to managed
-inline bool Native_GetManaged(std::uintptr_t nativeAddress, std::uintptr_t& outManaged) {
-    outManaged = 0;
-    if (!nativeAddress) return false;
-    return ReadPtrGlobal(nativeAddress + 0x28u, outManaged) && outManaged != 0;
-}
-
 } // namespace UnityExternal

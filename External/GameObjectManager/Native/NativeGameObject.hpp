@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "../../Core/UnityExternalMemory.hpp"
 #include "../../Core/UnityExternalMemoryConfig.hpp"
@@ -42,6 +43,34 @@ struct NativeGameObject {
         outCount = 0;
         if (!address) return false;
         return ReadInt32Global(address + 0x40u, outCount);
+    }
+
+    // Get tag (GameObject + 0x54, int32/word)
+    bool GetTag(std::int32_t& outTag) const {
+        outTag = 0;
+        if (!address) return false;
+        return ReadInt32Global(address + 0x54u, outTag);
+    }
+
+    // Get all component type IDs (from component pool entries)
+    bool GetComponentTypeIds(std::vector<std::int32_t>& outTypeIds) const {
+        outTypeIds.clear();
+        if (!address) return false;
+
+        std::uintptr_t pool = 0;
+        if (!GetComponentPool(pool) || !pool) return false;
+
+        std::int32_t count = 0;
+        if (!GetComponentCount(count) || count <= 0 || count > 1024) return false;
+
+        outTypeIds.reserve(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            std::uintptr_t entry = pool + static_cast<std::uintptr_t>(i) * 16u;
+            std::int32_t typeId = 0;
+            if (!ReadInt32Global(entry, typeId)) continue;
+            outTypeIds.push_back(typeId);
+        }
+        return true;
     }
 
     // Get name (+0x60 -> string pointer)

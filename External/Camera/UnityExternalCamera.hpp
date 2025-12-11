@@ -3,44 +3,49 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <algorithm>
 
 #include "../Core/UnityExternalMemory.hpp"
 #include "../Core/UnityExternalMemoryConfig.hpp"
 #include "../Core/UnityExternalTypes.hpp"
 #include "../GameObjectManager/UnityExternalGOM.hpp"
+#include "../GameObjectManager/Native/NativeGameObject.hpp"
 
 #include "glm/glm.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
 namespace UnityExternal {
 
-// Read camera's view-projection matrix
+// Read camera's matrix directly from +0x100 (as provided by Unity)
 // nativeCamera + 0x100 -> 4x4 matrix (16 floats)
 inline bool Camera_GetMatrix(std::uintptr_t nativeCamera, glm::mat4& outMatrix)
 {
     outMatrix = glm::mat4(1.0f);
-    if (!nativeCamera) {
-        return false;
-    }
+    if (!nativeCamera) return false;
 
     const IMemoryAccessor* acc = GetGlobalMemoryAccessor();
-    if (!acc) {
-        return false;
-    }
+    if (!acc) return false;
 
     float data[16] = {};
-    if (!acc->Read(nativeCamera + 0x100u, data, sizeof(data))) {
-        return false;
-    }
+    if (!acc->Read(nativeCamera + 0x100u, data, sizeof(data))) return false;
 
     outMatrix = glm::make_mat4(data);
     return true;
 }
 
-// Find main camera with priority:
-// 1. GameObject name "Main Camera"
-// 2. GameObject name "Camera Top"
-// 3. First enabled Camera component
+
+// Check if component is enabled (nativeComponent + 0x38 -> enabled byte)
+inline bool IsComponentEnabled(std::uintptr_t nativeComponent)
+{
+    if (!nativeComponent) return false;
+    std::uint8_t enabled = 0;
+    const IMemoryAccessor* acc = GetGlobalMemoryAccessor();
+    if (!acc) return false;
+    if (!acc->Read(nativeComponent + 0x38u, &enabled, 1)) return true; // Assume enabled if can't read
+    return enabled != 0;
+}
+
+// Find main camera: use GOMWalker helpers to get tag=5 GameObject, then find Camera component on it.
 inline bool FindMainCamera(const GOMWalker& walker,
                            std::uintptr_t gomGlobalAddress,
                            std::uintptr_t& outNativeCamera,
@@ -50,92 +55,50 @@ inline bool FindMainCamera(const GOMWalker& walker,
     outManagedCamera = 0;
 
     const IMemoryAccessor* acc = GetGlobalMemoryAccessor();
-    if (!acc || !gomGlobalAddress) {
+    if (!acc || !gomGlobalAddress) return false;
+
+    std::uintptr_t mainGoNative = 0;
+    std::uintptr_t mainGoManaged = 0;
+    if (!FindGameObjectThroughTag(walker, gomGlobalAddress, 5, mainGoNative, mainGoManaged) || !mainGoNative) {
         return false;
     }
 
-    std::vector<ComponentEntry> components;
-    if (!walker.EnumerateComponentsFromGlobal(gomGlobalAddress, components)) {
-        return false;
-    }
-    if (components.empty()) {
+    std::uintptr_t componentArray = 0;
+    if (!ReadPtrGlobal(mainGoNative + 0x30u, componentArray) || !componentArray) {
         return false;
     }
 
-    RuntimeKind runtime = walker.GetRuntime();
-
-    // Candidates
-    std::uintptr_t mainCameraNative = 0, mainCameraManaged = 0;
-    std::uintptr_t cameraTopNative = 0, cameraTopManaged = 0;
-    std::uintptr_t firstEnabledNative = 0, firstEnabledManaged = 0;
-
-    for (const auto& entry : components) {
-        if (!entry.managedComponent || !entry.nativeComponent) {
-            continue;
-        }
-
-        TypeInfo typeInfo;
-        if (!GetManagedType(runtime, *acc, entry.managedComponent, typeInfo)) {
-            continue;
-        }
-
-        if (typeInfo.name != "Camera") {
-            continue;
-        }
-
-        // nativeCamera+0x30 -> GameObject native
-        std::uintptr_t goNative = 0;
-        if (!ReadPtrGlobal(entry.nativeComponent + 0x30u, goNative) || !goNative) {
-            continue;
-        }
-
-        // GameObject+0x60 -> name pointer
-        std::uintptr_t namePtr = 0;
-        if (!ReadPtr(*acc, goNative + 0x60u, namePtr) || !namePtr) {
-            continue;
-        }
-
-        std::string goName;
-        if (!ReadCString(*acc, namePtr, goName)) {
-            continue;
-        }
-
-        // Priority 1: "Main Camera"
-        if (goName == "Main Camera" && !mainCameraNative) {
-            mainCameraNative = entry.nativeComponent;
-            mainCameraManaged = entry.managedComponent;
-            break; // Highest priority, return immediately
-        }
-
-        // Priority 2: "Camera Top"
-        if (goName == "Camera Top" && !cameraTopNative) {
-            cameraTopNative = entry.nativeComponent;
-            cameraTopManaged = entry.managedComponent;
-            continue;
-        }
-
-        // Priority 3: First camera (as fallback)
-        if (!firstEnabledNative) {
-            firstEnabledNative = entry.nativeComponent;
-            firstEnabledManaged = entry.managedComponent;
-        }
+    std::int32_t componentCount = 0;
+    if (!ReadInt32Global(mainGoNative + 0x40u, componentCount) || componentCount <= 0 || componentCount > 1024) {
+        return false;
     }
 
-    // Return by priority
-    if (mainCameraNative) {
-        outNativeCamera = mainCameraNative;
-        outManagedCamera = mainCameraManaged;
-        return true;
-    }
-    if (cameraTopNative) {
-        outNativeCamera = cameraTopNative;
-        outManagedCamera = cameraTopManaged;
-        return true;
-    }
-    if (firstEnabledNative) {
-        outNativeCamera = firstEnabledNative;
-        outManagedCamera = firstEnabledManaged;
-        return true;
+    for (int c = 0; c < componentCount; ++c)
+    {
+        std::uintptr_t compEntryAddr = componentArray + static_cast<std::uintptr_t>(c) * 16u;
+        std::uintptr_t nativeComp = 0;
+        if (!ReadPtrGlobal(compEntryAddr + 0x8u, nativeComp) || !nativeComp) continue;
+
+        std::uintptr_t managedComp = 0;
+        ReadPtrGlobal(nativeComp + 0x28u, managedComp);
+        if (!managedComp) continue;
+
+        std::string typeName;
+        std::uintptr_t vtable = 0, monoClass = 0, namePtr = 0;
+        if (ReadPtrGlobal(managedComp + 0x0u, vtable) &&
+            ReadPtrGlobal(vtable + 0x0u, monoClass) &&
+            ReadPtrGlobal(monoClass + 0x48u, namePtr)) {
+            ReadCString(*acc, namePtr, typeName);
+        }
+
+        if (typeName == "Camera") {
+            if (!IsComponentEnabled(nativeComp)) {
+                continue;
+            }
+            outNativeCamera = nativeComp;
+            outManagedCamera = managedComp;
+            return true;
+        }
     }
 
     return false;
