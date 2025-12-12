@@ -90,32 +90,35 @@ External/
 ```cpp
 #include "External/ExternalResolve.hpp"
 
-// 1. 创建内存访问器
+// 0. 打开目标进程，创建内存访问器（可替换为自定义/驱动版）
 HANDLE hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
 UnityExternal::WinAPIMemoryAccessor accessor(hProcess);
 UnityExternal::SetGlobalMemoryAccessor(&accessor);
 
-// 2. 遍历所有 GameObject
+// 1. 确定 GOM 全局指针（unityPlayerBase + 自行逆向的偏移）
 std::uintptr_t gomGlobal = unityPlayerBase + GOM_OFFSET;
+
+// 2. 创建 GOM Walker（Mono 或 Il2Cpp 任选其一，必要时都跑一遍）
 UnityExternal::GOMWalker walker(accessor, UnityExternal::RuntimeKind::Mono);
 
+// 3. 查找主相机
+std::uintptr_t camNative = 0, camManaged = 0;
+UnityExternal::FindMainCamera(walker, gomGlobal, camNative, camManaged);
+
+// 4. 获取相机矩阵 + W2S
+glm::mat4 camMatrix;
+UnityExternal::Camera_GetMatrix(camNative, camMatrix);
+UnityExternal::ScreenRect screen{0, 0, 1920, 1080};
+UnityExternal::Vector3f pos{/*world position*/};
+auto result = UnityExternal::WorldToScreenPoint(camMatrix, screen, glm::vec3(pos.x, pos.y, pos.z));
+
+// 5. 遍历所有 GameObject / 组件
 std::vector<UnityExternal::GameObjectEntry> gameObjects;
 walker.EnumerateGameObjectsFromGlobal(gomGlobal, gameObjects);
 
-for (const auto& go : gameObjects) {
-    UnityExternal::NativeGameObject nativeGO(go.nativeObject);
-    std::string name = nativeGO.GetName();
-    // ...
-}
-
-// 3. 获取 Transform 世界坐标
-UnityExternal::Vector3f pos;
-UnityExternal::GetTransformWorldPosition(transformNative, pos);
-
-// 4. 相机 W2S
-glm::mat4 camMatrix;
-UnityExternal::Camera_GetMatrix(cameraNative, camMatrix);
-auto result = UnityExternal::WorldToScreenPoint(camMatrix, screen, glm::vec3(pos.x, pos.y, pos.z));
+std::uintptr_t goNative = 0, compNative = 0, compManaged = 0;
+UnityExternal::FindGameObjectWithComponentThroughTypeName(
+    walker, gomGlobal, "Camera", goNative, compNative, compManaged);
 ```
 
 ### 自定义内存访问器

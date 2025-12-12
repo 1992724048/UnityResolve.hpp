@@ -11,9 +11,17 @@
 struct UnityGOMInfo {
     std::uintptr_t address;
     std::uintptr_t offset;
+    bool hasTypeIdBounds;
+    std::int32_t typeIdRange;
+    std::int32_t typeIdLower;
+    std::uintptr_t typeIdRangeAddr;
+    std::uintptr_t typeIdLowerAddr;
 };
 
 namespace UnityResolveGOM {
+
+inline std::uintptr_t SafeReadPtr(std::uintptr_t addr);
+inline std::int32_t   SafeReadInt32(std::uintptr_t addr);
 
 namespace {
     constexpr std::size_t kUnityFunctionScanLen = 0x400;
@@ -193,9 +201,87 @@ inline std::uintptr_t FindFirstMovToModule(std::uintptr_t func, std::size_t maxL
     return 0;
 }
 
+inline bool FindTypeIdBoundsInStep2(std::uintptr_t func, std::size_t maxLen, const ModuleRange& unityPlayer,
+                                    std::uintptr_t& typeIdRangeAddr, std::uintptr_t& typeIdLowerAddr) {
+    const auto* code = reinterpret_cast<const unsigned char*>(func);
+    std::size_t retPos = maxLen;
+    for (std::size_t i = 0; i < maxLen; ++i) {
+        unsigned char op = code[i];
+        if (op == 0xC3 || op == 0xC2) {
+            retPos = i;
+            break;
+        }
+    }
+    if (retPos == maxLen) {
+        return false;
+    }
+
+    std::uintptr_t firstTarget = 0;
+    std::uintptr_t secondTarget = 0;
+    std::size_t prevEnd = static_cast<std::size_t>(-1);
+
+    for (std::size_t i = 0; i + 6 <= retPos; ) {
+        std::size_t idx = i;
+        bool hasRex = (code[idx] >= 0x40 && code[idx] <= 0x4F);
+        if (hasRex) {
+            ++idx;
+        }
+
+        if (idx >= retPos || code[idx] != 0x8B) {
+            ++i;
+            continue;
+        }
+
+        if (idx + 2 >= retPos) {
+            break;
+        }
+
+        unsigned char modrm = code[idx + 1];
+        if ((modrm & 0xC7) != 0x05) {
+            ++i;
+            continue;
+        }
+
+        if (idx + 6 > retPos) {
+            break;
+        }
+
+        auto disp = *reinterpret_cast<const std::int32_t*>(code + idx + 2);
+        std::size_t instLen = (hasRex ? 1 : 0) + 1 + 1 + 4;
+        std::uintptr_t nextRip = func + i + instLen;
+        std::uintptr_t target = nextRip + static_cast<std::uintptr_t>(disp);
+
+        if (!IsInModule(unityPlayer, target)) {
+            i += instLen;
+            continue;
+        }
+
+        if (!firstTarget) {
+            firstTarget = target;
+            prevEnd = i + instLen;
+        } else if (!secondTarget && i == prevEnd) {
+            secondTarget = target;
+            break;
+        } else {
+            firstTarget = target;
+            secondTarget = 0;
+            prevEnd = i + instLen;
+        }
+
+        i += instLen;
+    }
+
+    if (firstTarget && secondTarget) {
+        typeIdRangeAddr = firstTarget;
+        typeIdLowerAddr = secondTarget;
+        return true;
+    }
+    return false;
+}
+
 inline UnityGOMInfo FindGameObjectManagerImpl() {
-    UnityGOMInfo info{0, 0};
-    
+    UnityGOMInfo info{0, 0, false, 0, 0, 0, 0};
+
     HMODULE il2cppModule = GetModuleHandleW(L"GameAssembly.dll");
     HMODULE monoModule = nullptr;
     if (!il2cppModule) {
@@ -248,30 +334,30 @@ inline UnityGOMInfo FindGameObjectManagerImpl() {
 
     if (!unityEntry) return info;
 
-    std::cout << "Entry[0]->UnityPlayer.dll+0x"
-              << std::hex << std::uppercase << (unityEntry - unityPlayer.base)
-              << std::dec << std::nouppercase << std::endl;
-
     std::uintptr_t step2Func = FindFirstCallToUnityPlayer(unityEntry, kUnityFunctionScanLen, unityPlayer);
     if (!step2Func) return info;
 
-    std::cout << "Entry[1]->UnityPlayer.dll+0x"
-              << std::hex << std::uppercase << (step2Func - unityPlayer.base)
-              << std::dec << std::nouppercase << std::endl;
+    std::uintptr_t typeIdRangeAddr = 0;
+    std::uintptr_t typeIdLowerAddr = 0;
+    if (FindTypeIdBoundsInStep2(step2Func, kUnityFunctionScanLen, unityPlayer, typeIdRangeAddr, typeIdLowerAddr)) {
+        info.hasTypeIdBounds = true;
+        info.typeIdRange = SafeReadInt32(typeIdRangeAddr);
+        info.typeIdLower = SafeReadInt32(typeIdLowerAddr);
+        info.typeIdRangeAddr = typeIdRangeAddr;
+        info.typeIdLowerAddr = typeIdLowerAddr;
+    }
 
     std::uintptr_t unityGlobal = ResolveGOMFromUnityPlayerEntry(step2Func, unityPlayer);
     if (!unityGlobal) return info;
 
     info.address = unityGlobal;
     info.offset  = unityGlobal - unityPlayer.base;
-    std::cout << "GameObjectManager->UnityPlayer.dll+0x" << std::hex << std::uppercase << info.offset
-              << std::dec << std::nouppercase << std::endl;
     return info;
 }
 
 inline UnityGOMInfo FindGameObjectManager() {
     static bool initialized = false;
-    static UnityGOMInfo cached{0, 0};
+    static UnityGOMInfo cached{0, 0, false, 0, 0, 0, 0};
 
     if (initialized) {
         return cached;
@@ -280,7 +366,7 @@ inline UnityGOMInfo FindGameObjectManager() {
     __try {
         cached = FindGameObjectManagerImpl();
     } __except (EXCEPTION_EXECUTE_HANDLER) {
-        cached = UnityGOMInfo{0, 0};
+        cached = UnityGOMInfo{0, 0, false, 0, 0, 0, 0};
     }
 
     initialized = true;

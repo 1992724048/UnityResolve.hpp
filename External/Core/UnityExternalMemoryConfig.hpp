@@ -1,19 +1,20 @@
 #pragma once
 
 #include <cstdint>
+#include <atomic>
 #include "UnityExternalMemory.hpp"
 
 namespace UnityExternal {
 
-// Global memory accessor singleton
-inline const IMemoryAccessor* g_memoryAccessor = nullptr;
+// Global memory accessor singleton (atomic pointer for thread-safety)
+inline std::atomic<const IMemoryAccessor*> g_memoryAccessor{nullptr};
 
 inline void SetGlobalMemoryAccessor(const IMemoryAccessor* accessor) {
-    g_memoryAccessor = accessor;
+    g_memoryAccessor.store(accessor, std::memory_order_release);
 }
 
 inline const IMemoryAccessor* GetGlobalMemoryAccessor() {
-    return g_memoryAccessor;
+    return g_memoryAccessor.load(std::memory_order_acquire);
 }
 
 // Global helper functions using the global accessor

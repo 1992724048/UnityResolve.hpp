@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <thread>
 
 #include "../Core/UnityExternalMemory.hpp"
 #include "../Core/UnityExternalMemoryConfig.hpp"
@@ -31,12 +30,11 @@ public:
     bool ReadManagerFromGlobal(std::uintptr_t gomGlobalAddress, std::uintptr_t& managerAddress) const;
     bool EnumerateGameObjects(std::uintptr_t managerAddress, std::vector<GameObjectEntry>& out) const;
     bool EnumerateGameObjectsFromGlobal(std::uintptr_t gomGlobalAddress, std::vector<GameObjectEntry>& out) const;
-    bool EnumerateGameObjectsParallel(std::uintptr_t managerAddress, std::vector<GameObjectEntry>& out, std::int32_t maxThreads = 0) const;
-    bool EnumerateGameObjectsFromGlobalParallel(std::uintptr_t gomGlobalAddress, std::vector<GameObjectEntry>& out, std::int32_t maxThreads = 0) const;
     bool EnumerateComponents(std::uintptr_t managerAddress, std::vector<ComponentEntry>& out) const;
     bool EnumerateComponentsFromGlobal(std::uintptr_t gomGlobalAddress, std::vector<ComponentEntry>& out) const;
 
     RuntimeKind GetRuntime() const { return runtime_; }
+    const IMemoryAccessor& Accessor() const { return mem_; }
 
 private:
     const IMemoryAccessor& mem_;
@@ -50,7 +48,6 @@ inline bool GOMWalker::ReadManagerFromGlobal(std::uintptr_t gomGlobalAddress, st
     }
     return ReadPtr(mem_, gomGlobalAddress, managerAddress);
 }
-
 inline bool GOMWalker::EnumerateGameObjects(std::uintptr_t managerAddress, std::vector<GameObjectEntry>& out) const {
     out.clear();
     if (!managerAddress) {
@@ -79,6 +76,8 @@ inline bool GOMWalker::EnumerateGameObjects(std::uintptr_t managerAddress, std::
     const std::size_t kMaxObjects = 1000000;
     const std::uintptr_t bucketStride = 24; // 0x18
 
+    const IMemoryAccessor& acc = mem_;
+
     for (std::int32_t bi = 0; bi < bucketCount; ++bi) {
         std::uintptr_t bucketPtr = buckets + static_cast<std::uintptr_t>(bi) * bucketStride;
         std::uintptr_t listHead = 0;
@@ -88,6 +87,24 @@ inline bool GOMWalker::EnumerateGameObjects(std::uintptr_t managerAddress, std::
 
         std::uintptr_t node = 0;
         if (!ReadPtr(mem_, listHead + 0x8, node) || !node) {
+            continue;
+        }
+
+        bool isGameObjectBucket = true;
+        std::uintptr_t firstNative = 0;
+        std::uintptr_t firstManaged = 0;
+        if (ReadPtr(mem_, node + 0x10, firstNative) && firstNative) {
+            ReadPtr(mem_, firstNative + 0x28, firstManaged);
+        }
+
+        if (firstManaged) {
+            TypeInfo info;
+            if (GetManagedType(runtime_, acc, firstManaged, info) && info.name != "GameObject") {
+                isGameObjectBucket = false;
+            }
+        }
+
+        if (!isGameObjectBucket) {
             continue;
         }
 
@@ -129,147 +146,6 @@ inline bool GOMWalker::EnumerateGameObjectsFromGlobal(std::uintptr_t gomGlobalAd
     return EnumerateGameObjects(managerAddress, out);
 }
 
-inline bool GOMWalker::EnumerateGameObjectsParallel(std::uintptr_t managerAddress,
-                                                    std::vector<GameObjectEntry>& out,
-                                                    std::int32_t maxThreads) const
-{
-    out.clear();
-    if (!managerAddress) {
-        return false;
-    }
-
-    std::uintptr_t buckets = 0;
-    if (!ReadPtr(mem_, managerAddress + 0x0, buckets) || !buckets) {
-        return false;
-    }
-
-    std::int32_t bucketCount = 0;
-    if (!ReadInt32(mem_, managerAddress + 0x8, bucketCount) || bucketCount <= 0 || bucketCount > 0x100000) {
-        return false;
-    }
-
-    if (bucketCount == 1) {
-        return EnumerateGameObjects(managerAddress, out);
-    }
-
-    unsigned int hwThreads = std::thread::hardware_concurrency();
-    if (hwThreads == 0) {
-        hwThreads = 4;
-    }
-
-    std::int32_t maxThreadLimit = static_cast<std::int32_t>(hwThreads);
-    if (maxThreads > 0 && maxThreads < maxThreadLimit) {
-        maxThreadLimit = maxThreads;
-    }
-
-    std::int32_t threadCount = bucketCount;
-    if (threadCount > maxThreadLimit) {
-        threadCount = maxThreadLimit;
-    }
-
-    if (threadCount <= 1) {
-        return EnumerateGameObjects(managerAddress, out);
-    }
-
-    const std::uintptr_t bucketStride = 24; // 0x18
-    const std::size_t kMaxObjects = 1000000;
-
-    std::vector<std::vector<GameObjectEntry>> threadResults;
-    threadResults.resize(static_cast<std::size_t>(threadCount));
-
-    std::vector<std::thread> threads;
-    threads.reserve(static_cast<std::size_t>(threadCount));
-
-    std::int32_t base = bucketCount / threadCount;
-    std::int32_t rem = bucketCount % threadCount;
-
-    std::int32_t startBucket = 0;
-    for (std::int32_t ti = 0; ti < threadCount; ++ti) {
-        std::int32_t count = base + (ti < rem ? 1 : 0);
-        std::int32_t begin = startBucket;
-        std::int32_t end = begin + count;
-
-        threads.emplace_back(
-            [this, buckets, begin, end, bucketStride, kMaxObjects, &threadResults, ti]() {
-                auto& local = threadResults[static_cast<std::size_t>(ti)];
-
-                for (std::int32_t bi = begin; bi < end; ++bi) {
-                    std::uintptr_t bucketPtr = buckets + static_cast<std::uintptr_t>(bi) * bucketStride;
-                    std::uintptr_t listHead = 0;
-                    if (!ReadPtr(this->mem_, bucketPtr + 0x10, listHead) || !listHead) {
-                        continue;
-                    }
-
-                    std::uintptr_t node = 0;
-                    if (!ReadPtr(this->mem_, listHead + 0x8, node) || !node) {
-                        continue;
-                    }
-
-                    for (std::size_t i = 0; node && i < kMaxObjects; ++i) {
-                        std::uintptr_t nativeObject = 0;
-                        std::uintptr_t managedObject = 0;
-                        std::uintptr_t next = 0;
-
-                        if (!ReadPtr(this->mem_, node + 0x10, nativeObject)) {
-                            break;
-                        }
-                        if (nativeObject) {
-                            ReadPtr(this->mem_, nativeObject + 0x28, managedObject);
-                        }
-
-                        if (nativeObject || managedObject) {
-                            GameObjectEntry entry{};
-                            entry.node = node;
-                            entry.nativeObject = nativeObject;
-                            entry.managedObject = managedObject;
-                            local.push_back(entry);
-                        }
-
-                        if (!ReadPtr(this->mem_, node + 0x8, next) || !next || next == listHead) {
-                            break;
-                        }
-                        node = next;
-                    }
-                }
-            });
-
-        startBucket = end;
-    }
-
-    for (auto& t : threads) {
-        if (t.joinable()) {
-            t.join();
-        }
-    }
-
-    std::size_t totalCount = 0;
-    for (const auto& v : threadResults) {
-        totalCount += v.size();
-    }
-
-    if (totalCount == 0) {
-        return false;
-    }
-
-    out.reserve(totalCount);
-    for (auto& v : threadResults) {
-        out.insert(out.end(), v.begin(), v.end());
-    }
-
-    return true;
-}
-
-inline bool GOMWalker::EnumerateGameObjectsFromGlobalParallel(std::uintptr_t gomGlobalAddress,
-                                                              std::vector<GameObjectEntry>& out,
-                                                              std::int32_t maxThreads) const
-{
-    std::uintptr_t managerAddress = 0;
-    if (!ReadManagerFromGlobal(gomGlobalAddress, managerAddress) || !managerAddress) {
-        return false;
-    }
-    return EnumerateGameObjectsParallel(managerAddress, out, maxThreads);
-}
-
 inline bool GOMWalker::EnumerateComponents(std::uintptr_t managerAddress, std::vector<ComponentEntry>& out) const {
     out.clear();
 
@@ -295,7 +171,7 @@ inline bool GOMWalker::EnumerateComponents(std::uintptr_t managerAddress, std::v
 
         std::int32_t componentCount = 0;
         if (!ReadInt32(mem_, info.nativeObject + 0x40, componentCount)) {
-            return false;
+            continue;
         }
         if (componentCount <= 0 || componentCount > kMaxComponentsPerObject) {
             continue;
@@ -341,26 +217,17 @@ inline bool FindGameObjectThroughTag(const GOMWalker& walker,
     outNativeObject = 0;
     outManagedObject = 0;
 
-    if (!gomGlobalAddress) {
-        return false;
-    }
-
     std::vector<GameObjectEntry> gameObjects;
-    if (!walker.EnumerateGameObjectsFromGlobal(gomGlobalAddress, gameObjects) || gameObjects.empty()) {
+    if (!walker.EnumerateGameObjectsFromGlobal(gomGlobalAddress, gameObjects)) {
         return false;
     }
 
     for (const auto& go : gameObjects) {
-        if (!go.nativeObject) {
-            continue;
-        }
+        if (!go.nativeObject) continue;
 
         std::uint16_t tagValue = 0;
-        if (!ReadValueGlobal(go.nativeObject + 0x54u, tagValue)) {
-            continue;
-        }
-
-        if (static_cast<std::int32_t>(tagValue) == tag) {
+        if (ReadValue(walker.Accessor(), go.nativeObject + 0x54u, tagValue) &&
+            static_cast<std::int32_t>(tagValue) == tag) {
             outNativeObject = go.nativeObject;
             outManagedObject = go.managedObject;
             return true;
@@ -380,14 +247,7 @@ inline bool FindGameObjectThroughName(const GOMWalker& walker,
     outNativeObject = 0;
     outManagedObject = 0;
 
-    if (!gomGlobalAddress) {
-        return false;
-    }
-
-    const IMemoryAccessor* acc = GetGlobalMemoryAccessor();
-    if (!acc) {
-        return false;
-    }
+    const IMemoryAccessor& acc = walker.Accessor();
 
     std::vector<GameObjectEntry> gameObjects;
     if (!walker.EnumerateGameObjectsFromGlobal(gomGlobalAddress, gameObjects) || gameObjects.empty()) {
@@ -400,12 +260,12 @@ inline bool FindGameObjectThroughName(const GOMWalker& walker,
         }
 
         std::uintptr_t namePtr = 0;
-        if (!ReadPtrGlobal(go.nativeObject + 0x60u, namePtr) || !namePtr) {
+        if (!ReadPtr(acc, go.nativeObject + 0x60u, namePtr) || !namePtr) {
             continue;
         }
 
         std::string goName;
-        if (!ReadCString(*acc, namePtr, goName)) {
+        if (!ReadCString(acc, namePtr, goName)) {
             continue;
         }
 
@@ -477,7 +337,9 @@ inline bool GetComponentThroughTypeId(std::uintptr_t gameObjectNative,
 inline bool GetComponentThroughTypeName(std::uintptr_t gameObjectNative,
                                         const std::string& typeName,
                                         std::uintptr_t& outNativeComponent,
-                                        std::uintptr_t& outManagedComponent)
+                                        std::uintptr_t& outManagedComponent,
+                                        RuntimeKind runtime,
+                                        const IMemoryAccessor& acc)
 {
     outNativeComponent = 0;
     outManagedComponent = 0;
@@ -486,18 +348,13 @@ inline bool GetComponentThroughTypeName(std::uintptr_t gameObjectNative,
         return false;
     }
 
-    const IMemoryAccessor* acc = GetGlobalMemoryAccessor();
-    if (!acc) {
-        return false;
-    }
-
     std::uintptr_t pool = 0;
-    if (!ReadPtrGlobal(gameObjectNative + 0x30u, pool) || !pool) {
+    if (!ReadPtr(acc, gameObjectNative + 0x30u, pool) || !pool) {
         return false;
     }
 
     std::int32_t count = 0;
-    if (!ReadInt32Global(gameObjectNative + 0x40u, count)) {
+    if (!ReadInt32(acc, gameObjectNative + 0x40u, count)) {
         return false;
     }
     if (count <= 0 || count > 1024) {
@@ -507,27 +364,54 @@ inline bool GetComponentThroughTypeName(std::uintptr_t gameObjectNative,
     for (int i = 0; i < count; ++i) {
         std::uintptr_t slotAddr = pool + 0x8u + static_cast<std::uintptr_t>(i) * 0x10u;
         std::uintptr_t nativeComp = 0;
-        if (!ReadPtrGlobal(slotAddr, nativeComp) || !nativeComp) {
+        if (!ReadPtr(acc, slotAddr, nativeComp) || !nativeComp) {
             continue;
         }
 
         std::uintptr_t managedComp = 0;
-        ReadPtrGlobal(nativeComp + 0x28u, managedComp);
+        ReadPtr(acc, nativeComp + 0x28u, managedComp);
         if (!managedComp) {
             continue;
         }
 
-        std::string compName;
-        std::uintptr_t vtable = 0;
-        std::uintptr_t monoClass = 0;
-        std::uintptr_t namePtr = 0;
-        if (ReadPtrGlobal(managedComp + 0x0u, vtable) &&
-            ReadPtrGlobal(vtable + 0x0u, monoClass) &&
-            ReadPtrGlobal(monoClass + 0x48u, namePtr)) {
-            ReadCString(*acc, namePtr, compName);
+        TypeInfo info;
+        if (GetManagedType(runtime, acc, managedComp, info) && info.name == typeName) {
+            outNativeComponent = nativeComp;
+            outManagedComponent = managedComp;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+inline bool FindGameObjectWithComponentThroughTypeName(const GOMWalker& walker,
+                                                       std::uintptr_t gomGlobalAddress,
+                                                       const std::string& typeName,
+                                                       std::uintptr_t& outGameObjectNative,
+                                                       std::uintptr_t& outNativeComponent,
+                                                       std::uintptr_t& outManagedComponent)
+{
+    outGameObjectNative = 0;
+    outNativeComponent = 0;
+    outManagedComponent = 0;
+
+    const IMemoryAccessor& acc = walker.Accessor();
+
+    std::vector<GameObjectEntry> gameObjects;
+    if (!walker.EnumerateGameObjectsFromGlobal(gomGlobalAddress, gameObjects) || gameObjects.empty()) {
+        return false;
+    }
+
+    for (const auto& go : gameObjects) {
+        if (!go.nativeObject) {
+            continue;
         }
 
-        if (compName == typeName) {
+        std::uintptr_t nativeComp = 0;
+        std::uintptr_t managedComp = 0;
+        if (GetComponentThroughTypeName(go.nativeObject, typeName, nativeComp, managedComp, walker.GetRuntime(), acc)) {
+            outGameObjectNative = go.nativeObject;
             outNativeComponent = nativeComp;
             outManagedComponent = managedComp;
             return true;
