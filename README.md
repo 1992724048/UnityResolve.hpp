@@ -1,246 +1,270 @@
-> [!IMPORTANT]
-> 新版代码正在重构中  \
-> **The codebase is currently under refactoring.**
-
-> 示例代码 (Example code)
-> - [Phasmophobia Cheat (il2cpp, old)](https://github.com/issuimo/PhasmophobiaCheat/tree/main)  
-> - [SausageMan Cheat (il2cpp)](https://github.com/1992724048/SausageManCheat/tree/master/GPP32)
-
-> [!NOTE]\
-> 有任何新功能建议或 Bug，欢迎直接提交 Issue；当然也欢迎你动手修改代码后向本仓库发起 Pull Request。  
-> New feature requests or bug reports are welcome via Issues, and Pull Requests are just as appreciated if you’d like to contribute code directly.
-
-> [!WARNING]\
-> 如果编译器支持，请务必开启 SEH（结构化异常处理）。  
-> If your compiler supports it, please enable SEH (Structured Exception Handling).
-
-> [!TIP]\
-> 高版本 Android 上可能出现的崩溃问题，请参考 [此 Issue](https://github.com/issuimo/UnityResolve.hpp/issues/11)。  
-> For potential crash issues on newer Android versions, see [this issue](https://github.com/issuimo/UnityResolve.hpp/issues/11).
-<hr>
-<h3 align="center">简要概述 (Brief overview)</h3>
-<hr>
-
 # UnityResolve.hpp
-> ### 支持的平台 (Supported platforms)
-> - [X] Windows
-> - [X] Android
-> - [X] Linux
-> - [X] IOS
-> - [X] HarmonyOS
 
-> ### 类型 (Types)
-> - [X] Camera
-> - [X] Transform
-> - [X] Component
-> - [X] Object (Unity)
-> - [X] LayerMask
-> - [X] Rigidbody
-> - [x] MonoBehaviour
-> - [x] Renderer
-> - [x] Mesh
-> - [X] Behaviour
-> - [X] Physics
-> - [X] GameObject
-> - [X] Collider
-> - [X] Vector4
-> - [X] Vector3
-> - [X] Vector2
-> - [X] Quaternion
-> - [X] Bounds
-> - [X] Plane
-> - [X] Ray
-> - [X] Rect
-> - [X] Color
-> - [X] Matrix4x4
-> - [X] Array
-> - [x] String
-> - [x] Object (C#)
-> - [X] Type (C#)
-> - [X] List
-> - [X] Dictionary
-> - [X] Animator
-> - [X] CapsuleCollider
-> - [X] BoxCollider
-> - [X] Time
-> - [X] FieldInfo
-> - More...
+Unity 游戏逆向工具库，支持 **内注入** 和 **跨进程外挂** 两种模式。
 
-> ### 功能 (Functions)
-> - [X] Mono注入 (Mono Inject)
-> - [X] DumpToFile
-> - [X] 附加线程 (Thread Attach / Detach)
-> - [X] 修改静态变量值 (Modifying the value of a static variable)
-> - [X] 获取对象 (Obtaining an instance)
-> - [X] 创建C#字符串 (Create C# String)
-> - [X] 创建C#数组 (Create C# Array)
-> - [X] 创建C#对象 (Create C# instance)
-> - [X] 世界坐标转屏幕坐标/屏幕坐标转世界坐标 (WorldToScreenPoint/ScreenToWorldPoint)
-> - [X] 获取继承子类的名称 (Get the name of the inherited subclass)
-> - [X] 获取函数地址(变量偏移) 及调用(修改/获取) (Get the function address (variable offset) and invoke (modify/get))
-> - [x] 获取Gameobject组件 (Get GameObject component)
-> - More...
-<hr>
-<h3 align="center">功能使用 (How to use)</h3>
-<hr>
+> [!NOTE]
+> 有任何新功能建议或 Bug，欢迎提交 Issue 或 Pull Request。
 
-#### 使用GLM (use glm)
+---
+
+## 目录
+
+- [概述](#概述)
+- [External 跨进程模块](#external-跨进程模块)
+- [UnityResolve 内注入模块](#unityresolve-内注入模块)
+
+---
+
+## 概述
+
+| 模块 | 说明 | 平台 |
+|------|------|------|
+| **UnityResolve.hpp** | 内注入库，通过 DLL 注入调用托管 API | Windows / Android / Linux / iOS / HarmonyOS |
+| **External/** | 跨进程外挂库，纯外部内存读取 | Windows |
+
+> [!WARNING]
+> 如果编译器支持，请务必开启 SEH（结构化异常处理）。
+
+> [!TIP]
+> 高版本 Android 崩溃问题请参考 [Issue #11](https://github.com/issuimo/UnityResolve.hpp/issues/11)。
+
+**示例项目**
+- [Phasmophobia Cheat (IL2CPP)](https://github.com/issuimo/PhasmophobiaCheat)
+- [SausageMan Cheat (IL2CPP)](https://github.com/1992724048/SausageManCheat/tree/master/GPP32)
+
+---
+
+## External 跨进程模块
+
+独立于内注入的**纯外部内存读取模块**，适用于跨进程外挂开发。
+
+### 依赖
+
+需要手动添加 [GLM 库](https://github.com/g-truc/glm)：
+
+```bash
+# 克隆 GLM 到项目根目录
+git clone https://github.com/g-truc/glm.git
+# 或下载 Release 解压到项目根目录
+```
+
+确保目录结构为：
+```
+项目根目录/
+├── glm/
+│   ├── glm.hpp
+│   └── ...
+└── External/
+    └── ...
+```
+
+### 目录结构
+
+```
+External/
+├── Core/                  # 基础内存接口
+│   ├── UnityExternalMemory.hpp        # IMemoryAccessor 接口
+│   ├── UnityExternalMemoryConfig.hpp  # 全局访问器 + ReadPtrGlobal 等
+│   └── UnityExternalTypes.hpp         # RuntimeKind / TypeInfo / GetManagedType
+│
+├── MemoryRead/            # 内存读取实现（可替换）
+│   └── UnityExternalMemoryWinAPI.hpp  # 默认 WinAPI 实现
+│
+├── GameObjectManager/     # GOM 遍历 + 原生结构
+│   ├── UnityExternalGOM.hpp           # GOMWalker
+│   ├── Managed/ManagedObject.hpp      # 托管对象封装
+│   └── Native/                        # 原生结构
+│       ├── NativeGameObject.hpp
+│       ├── NativeComponent.hpp
+│       └── NativeTransform.hpp
+│
+├── Camera/                # 相机 + W2S
+│   ├── UnityExternalCamera.hpp        # FindMainCamera / Camera_GetMatrix
+│   └── UnityExternalWorldToScreen.hpp # WorldToScreenPoint
+│
+└── ExternalResolve.hpp    # 统一入口
+```
+
+### 快速开始
+
+```cpp
+#include "External/ExternalResolve.hpp"
+
+// 0. 打开目标进程，创建内存访问器（可替换为自定义/驱动版）
+HANDLE hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+UnityExternal::WinAPIMemoryAccessor accessor(hProcess);
+UnityExternal::SetGlobalMemoryAccessor(&accessor);
+
+// 1. 确定 GOM 全局指针（unityPlayerBase + 自行逆向的偏移）
+std::uintptr_t gomGlobal = unityPlayerBase + GOM_OFFSET;
+
+// 2. 创建 GOM Walker（Mono 或 Il2Cpp 任选其一，必要时都跑一遍）
+UnityExternal::GOMWalker walker(accessor, UnityExternal::RuntimeKind::Mono);
+
+// 3. 查找主相机
+std::uintptr_t camNative = 0, camManaged = 0;
+UnityExternal::FindMainCamera(walker, gomGlobal, camNative, camManaged);
+
+// 4. 获取相机矩阵 + W2S
+glm::mat4 camMatrix;
+UnityExternal::Camera_GetMatrix(camNative, camMatrix);
+UnityExternal::ScreenRect screen{0, 0, 1920, 1080};
+UnityExternal::Vector3f pos{/*world position*/};
+auto result = UnityExternal::WorldToScreenPoint(camMatrix, screen, glm::vec3(pos.x, pos.y, pos.z));
+
+// 5. 遍历所有 GameObject / 组件
+std::vector<UnityExternal::GameObjectEntry> gameObjects;
+walker.EnumerateGameObjectsFromGlobal(gomGlobal, gameObjects);
+
+std::uintptr_t goNative = 0, compNative = 0, compManaged = 0;
+UnityExternal::FindGameObjectWithComponentThroughTypeName(
+    walker, gomGlobal, "Camera", goNative, compNative, compManaged);
+```
+
+### 自定义内存访问器
+
+默认使用 `WinAPIMemoryAccessor`（基于 `ReadProcessMemory`），可替换为驱动或其他实现：
+
+```cpp
+class MyDriverAccessor : public UnityExternal::IMemoryAccessor {
+public:
+    bool Read(std::uintptr_t address, void* buffer, std::size_t size) const override {
+        return MyDriver::ReadMemory(address, buffer, size);
+    }
+    bool Write(std::uintptr_t address, const void* buffer, std::size_t size) const override {
+        return MyDriver::WriteMemory(address, buffer, size);
+    }
+};
+
+MyDriverAccessor accessor;
+UnityExternal::SetGlobalMemoryAccessor(&accessor);
+```
+
+---
+
+## UnityResolve 内注入模块
+
+通过 DLL 注入使用托管 API。
+
+### 支持平台
+
+- [x] Windows
+- [x] Android
+- [x] Linux
+- [x] iOS
+- [x] HarmonyOS
+
+### 支持类型
+
+Camera, Transform, Component, GameObject, Rigidbody, MonoBehaviour, Renderer, Mesh, Physics, Collider, Vector2/3/4, Quaternion, Matrix4x4, Array, List, Dictionary, String, Animator, Time, FieldInfo 等。
+
+### 依赖
+
 > [!CAUTION]
-> 新版本强制性要求 \
-> Mandatory requirements for new versions
+> 新版本强制要求 [GLM 库](https://github.com/g-truc/glm)
 
-[GLM Library](https://github.com/g-truc/glm)
-> ``` C++
-> #define USE_GLM // 新版本不需要添加 (New versions do not need to be added)
-> #include "UnityResolve.hpp"
-> ```
+### 基础用法
 
-#### 更改平台 (Change platform)
-> ``` c++
-> #define WINDOWS_MODE 1 // 如果需要请改为 1 (1 if you need)
-> #define ANDROID_MODE 0
-> #define LINUX_MODE 0
-> ```
+#### 更改平台
+```cpp
+#define WINDOWS_MODE 1
+#define ANDROID_MODE 0
+#define LINUX_MODE 0
+```
 
-#### 初始化 (Initialization)
-> ``` c++
-> // Windows
-> UnityResolve::Init(GetModuleHandle(L"GameAssembly.dll | mono.dll"), UnityResolve::Mode::Mono);
-> // Linux、Android、IOS、HarmonyOS
-> UnityResolve::Init(dlopen(L"GameAssembly.so | mono.so", RTLD_NOW), UnityResolve::Mode::Mono);
-> ```
+#### 初始化
+```cpp
+// Windows
+UnityResolve::Init(GetModuleHandle(L"GameAssembly.dll"), UnityResolve::Mode::Il2Cpp);
+// Linux / Android / iOS
+UnityResolve::Init(dlopen("libil2cpp.so", RTLD_NOW), UnityResolve::Mode::Il2Cpp);
+```
 
-#### 附加线程 (Thread Attach / Detach)
-> [!TIP]
-> 如果你是在游戏主线程使用或者通过Hook Update/LateUpdate 那么并不需要该功能 \
-> If you are using it on the main thread of the game or via Hook Update/LateUpdate, you don't need this feature
+#### 线程附加
+```cpp
+UnityResolve::ThreadAttach();
+// ... 操作 ...
+UnityResolve::ThreadDetach();
+```
 
-> ``` c++
-> // C# GC Attach
-> UnityResolve::ThreadAttach();
-> 
-> // C# GC Detach
-> UnityResolve::ThreadDetach();
-> ```
+#### 获取类和方法
+```cpp
+auto assembly = UnityResolve::Get("Assembly-CSharp.dll");
+auto pClass = assembly->Get("PlayerController");
 
-#### Mono注入 (Mono Inject)
-> [!TIP]
-> 仅 Mono 模式可用 \
-> Only Mono mode is available
+// 获取字段
+auto field = pClass->Get<UnityResolve::Field>("health");
+int health = pClass->GetValue<int>(playerInstance, "health");
+pClass->SetValue<int>(playerInstance, "health", 100);
 
-> ``` c++
-> UnityResolve::AssemblyLoad assembly("./MonoCsharp.dll");
-> UnityResolve::AssemblyLoad assembly("./MonoCsharp.dll", "MonoCsharp", "Inject", "MonoCsharp.Inject:Load()");
-> ```
+// 调用方法
+auto method = pClass->Get<UnityResolve::Method>("TakeDamage");
+method->Invoke<void>(playerInstance, 50);
+```
 
-#### 获取函数地址(变量偏移) 及调用(修改/获取) (Get the function address (variable offset) and invoke (modify/get))
-> ``` c++
-> const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
-> const auto pClass   = assembly->Get("className | 类名称");
->                    // assembly->Get("className | 类名称", "*");
->                    // assembly->Get("className | 类名称", "namespace | 空间命名");
-> 
-> const auto field       = pClass->Get<UnityResolve::Field>("Field Name | 变量名");
-> const auto fieldOffset = pClass->Get<std::int32_t>("Field Name | 变量名");
-> const int  time        = pClass->GetValue<int>(obj Instance | 对象地址, "time");
->                       // pClass->GetValue(obj Instance*, name);
->                        = pClass->SetValue<int>(obj Instance | 对象地址, "time", 114514);
->                       // pClass->SetValue(obj Instance*, name, value);
-> const auto method      = pClass->Get<UnityResolve::Method>("Method Name | 函数名");
->                       // pClass->Get<UnityResolve::Method>("Method Name | 函数名", { "System.String" });
->                       // pClass->Get<UnityResolve::Method>("Method Name | 函数名", { "*", "System.String" });
->                       // pClass->Get<UnityResolve::Method>("Method Name | 函数名", { "*", "", "System.String" });
->                       // pClass->Get<UnityResolve::Method>("Method Name | 函数名", { "*", "System.Int32", "System.String" });
->                       // pClass->Get<UnityResolve::Method>("Method Name | 函数名", { "*", "System.Int32", "System.String", "*" });
->                       // "*" == ""
-> 
-> const auto functionPtr = method->function;
-> 
-> const auto method1 = pClass->Get<UnityResolve::Method>("method name1 | 函数名称1");
-> const auto method2 = pClass->Get<UnityResolve::Method>("method name2 | 函数名称2");
-> 
-> method1->Invoke<int>(114, 514, "114514");
-> // Invoke<return type>(args...);
->
-> // Cast<return type, args...>(void);
-> // Cast(UnityResolve::MethodPointer<return type, args...>&);
-> const UnityResolve::MethodPointer<void, int, bool> ptr = method2->Cast<void, int, bool>();
-> ptr(114514, true);
->
-> UnityResolve::MethodPointer<void, int, bool> add;
-> ptr = method1->Cast(add);
->
-> std::function<void(int, bool)> add2;
-> method->Cast(add2);
->
-> UnityResolve::Field::Variable<Vector3, Player> syncPos;
-> syncPos.Init(pClass->Get<UnityResolve::Field>("syncPos"));
-> auto pos = syncPos[playerInstance];
-> auto pos = syncPos.Get(playerInstance);
->
-> ```
+#### W2S
+```cpp
+Camera* pCamera = UnityResolve::UnityType::Camera::GetMain();
+Vector3 screenPos = pCamera->WorldToScreenPoint(worldPos, Eye::Left);
+```
 
-#### 转存储到文件 (DumpToFile)
-> ``` C++
-> UnityResolve::DumpToFile("./output/");
-> ```
+#### Dump
+```cpp
+UnityResolve::DumpToFile("./output/");
+```
 
-#### 创建C#字符串 (Create C# String)
-> ``` c++
-> const auto str     = UnityResolve::UnityType::String::New("string | 字符串");
-> std::string cppStr = str.ToString();
-> ```
+### GOM 内注入支持
 
-#### 创建C#数组 (Create C# Array)
-> ``` c++
-> const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
-> const auto pClass   = assembly->Get("className | 类名称");
-> const auto array    = UnityResolve::UnityType::Array<T>::New(pClass, size);
-> std::vector<T> cppVector = array.ToVector();
-> ```
+`UnityResolve.GOM.hpp` 提供内注入环境下的原生 GOM 遍历（仅 Windows）：
 
-#### 创建C#对象 (Create C# instance)
-> ``` c++
-> const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
-> const auto pClass   = assembly->Get("className | 类名称");
-> const auto pGame    = pClass->New<Game*>();
-> ```
+```cpp
+#include "UnityResolve.hpp"
+#if WINDOWS_MODE
+#include "UnityResolve.GOM.hpp"
+#endif
 
-#### 获取对象 (Obtaining an instance)
-> [!TIP]
-> 仅 Unity 对象 \
-> Unity objects only
+auto gos = UnityResolveGOM::EnumerateGameObjects();
+for (const auto& g : gos) {
+    // g.nativeObject / g.managedObject
+}
+```
 
-> ``` c++
-> const auto assembly = UnityResolve::Get("assembly.dll | 程序集名称.dll");
-> const auto pClass   = assembly->Get("className | 类名称");
-> std::vector<Player*> playerVector = pClass->FindObjectsByType<Player*>();
-> // FindObjectsByType<return type>(void);
-> playerVector.size();
-> ```
+> [!WARNING]
+> 需开启 SEH，不同 Unity 版本可能存在兼容性差异。
 
-#### 世界坐标转屏幕坐标/屏幕坐标转世界坐标 (WorldToScreenPoint/ScreenToWorldPoint)
-> ``` c++
-> Camera* pCamera = UnityResolve::UnityType::Camera::GetMain();
-> Vector3 point   = pCamera->WorldToScreenPoint(Vector3, Eye::Left);
-> Vector3 world   = pCamera->ScreenToWorldPoint(point, Eye::Left);
-> ```
+### 更多用法
 
-#### 获取继承子类的名称 (Get the name of the inherited subclass)
-> ``` c++
-> const auto assembly = UnityResolve::Get("UnityEngine.CoreModule.dll");
-> const auto pClass   = assembly->Get("MonoBehaviour");
-> Parent* pParent     = pClass->FindObjectsByType<Parent*>()[0];
-> std::string child   = pParent->GetType()->GetFullName();
-> ```
+#### Mono 注入
+```cpp
+// 仅 Mono 模式
+UnityResolve::AssemblyLoad assembly("./MonoCsharp.dll");
+```
 
-#### 获取Gameobject组件 (Get GameObject component)
-> ``` c++
-> std::vector<T*> objs = gameobj->GetComponents<T*>(UnityResolve::Get("assembly.dll")->Get("class")));
->                     // gameobj->GetComponents<return type>(Class* component)
-> std::vector<T*> objs = gameobj->GetComponentsInChildren<T*>(UnityResolve::Get("assembly.dll")->Get("class")));
->                     // gameobj->GetComponentsInChildren<return type>(Class* component)
-> std::vector<T*> objs = gameobj->GetComponentsInParent<T*>(UnityResolve::Get("assembly.dll")->Get("class")));
->                     // gameobj->GetComponentsInParent<return type>(Class* component)
-> ```
+#### 创建 C# 对象
+```cpp
+// 字符串
+auto str = UnityResolve::UnityType::String::New("hello");
 
+// 数组
+auto array = UnityResolve::UnityType::Array<int>::New(pClass, 10);
+
+// 实例
+auto obj = pClass->New<MyClass*>();
+```
+
+#### 查找对象
+```cpp
+// 查找所有指定类型的对象
+std::vector<Player*> players = pClass->FindObjectsByType<Player*>();
+
+// 获取组件
+auto comps = gameobj->GetComponents<T*>(pClass);
+auto children = gameobj->GetComponentsInChildren<T*>(pClass);
+```
+
+#### 获取子类类型名
+```cpp
+auto pClass = UnityResolve::Get("UnityEngine.CoreModule.dll")->Get("MonoBehaviour");
+auto obj = pClass->FindObjectsByType<MonoBehaviour*>()[0];
+std::string typeName = obj->GetType()->GetFullName();
+```

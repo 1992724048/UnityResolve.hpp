@@ -364,9 +364,9 @@ class UnityResolve final {
         template <typename T>
         T Unbox(void *obj) {
             if (mode_ == Mode::Il2Cpp) {
-                return static_cast<T>(Invoke<void *>("mono_object_unbox", obj));
-            } else {
                 return static_cast<T>(Invoke<void *>("il2cpp_object_unbox", obj));
+            } else {
+                return static_cast<T>(Invoke<void *>("mono_object_unbox", obj));
             }
         }
     };
@@ -1529,6 +1529,111 @@ class UnityResolve final {
                     return method->Invoke<int>(this);
                 return 0;
             }
+        };
+
+        struct Il2CppClassInternal {
+            void *reserved0;
+            void *reserved1;
+            const char *name;
+            const char *namespaze;
+        };
+
+        struct MonoClassInternal {
+            char padding[0x48];
+            const char *name;
+            const char *namespaze;
+        };
+
+        struct MonoVTableInternal {
+            MonoClassInternal *klass;
+        };
+
+        struct Il2CppGameObjectNode {
+            Il2CppGameObjectNode *pLast;
+            Il2CppGameObjectNode *pNext;
+            void *nativeObject;
+        };
+
+        struct Il2CppGameObjectManager {
+            char pad_0000[0x28];
+            Il2CppGameObjectNode *firstNode;
+        };
+
+        struct Il2CppNativeGameObject {
+            char pad_0000[0x28];
+            void *managedObject;
+            void *componentPool;
+            char pad_0038[0x8];
+            int componentCount;
+            char pad_0044[0x1C];
+            void *objectName;
+        };
+
+        struct Il2CppComponentPool {
+            char pad_0000[0x8];
+            void *firstComponent;
+        };
+
+        struct Il2CppNativeComponent {
+            char pad_0000[0x28];
+            void *managedComponent;
+        };
+
+        struct Il2CppManagedObjectHeader {
+            void *klass;
+            void *monitor;
+        };
+
+        struct Il2CppManagedGameObject : Il2CppManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct Il2CppManagedComponent : Il2CppManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct MonoGameObjectNode {
+            MonoGameObjectNode *pLast;
+            MonoGameObjectNode *pNext;
+            void *nativeObject;
+        };
+
+        struct MonoGameObjectManager {
+            char pad_0000[0x28];
+            MonoGameObjectNode *firstNode;
+        };
+
+        struct MonoNativeGameObject {
+            char pad_0000[0x28];
+            void *managedObject;
+            void *componentPool;
+            char pad_0038[0x8];
+            int componentCount;
+            char pad_0044[0x1C];
+            void *objectName;
+        };
+
+        struct MonoComponentPool {
+            char pad_0000[0x8];
+            void *firstComponent;
+        };
+
+        struct MonoNativeComponent {
+            char pad_0000[0x28];
+            void *managedComponent;
+        };
+
+        struct MonoManagedObjectHeader {
+            MonoVTableInternal *vtable;
+            void *monitor;
+        };
+
+        struct MonoManagedGameObject : MonoManagedObjectHeader {
+            void *nativeObject;
+        };
+
+        struct MonoManagedComponent : MonoManagedObjectHeader {
+            void *nativeObject;
         };
 
         enum class BindingFlags : uint32_t {
@@ -3389,5 +3494,10 @@ class UnityResolve final {
     inline static void *hmodule_;
     inline static std::unordered_map<std::string, void *> address_{};
     inline static void *pDomain{};
-};
-#endif // UNITYRESOLVE_HPPs
+  };
+
+#if WINDOWS_MODE
+#include "UnityResolve.GOM.hpp"
+#endif
+
+#endif // UNITYRESOLVE_HPP
