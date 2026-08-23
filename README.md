@@ -1,3 +1,7 @@
+> ## This version is no longer maintained, please switch to UnityResolve-V3
+> https://github.com/1992724048/UnityResolve-V3 \
+> UnityResolve.hpp is being redesigned to be more modern and user-friendly
+
 # UnityResolve.hpp
 
 Unity 游戏逆向工具库，支持 **内注入** 和 **跨进程外挂** 两种模式。
